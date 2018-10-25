@@ -13,9 +13,8 @@ import groovy.json.JsonSlurper
 *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
 *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
 *  for the specific language governing permissions and limitations under the License.
-*
-*  10/07/2018 - Added support to display various device info - Chris Wilson
-*  9/2/2018 - Initial Release - Chris Wilson
+*  10/24/2018 - Added ability to trigger Alexa Routines - Chris Wilson
+*  09/02/2018 - Initial Release - Chris Wilson
 */
 
 preferences {
@@ -26,6 +25,7 @@ preferences {
         input "echoName", "text", title: "Echo Device Name", description: "Name of your device", required: true, displayDuringSetup: true
         input "ttsPath", "text", title: "Path to Alexa TTS script", description: "Path to Alexa TTS script i.e. /opt/ha-alexa-tts-master", required: true, displayDuringSetup: true
         input "cookPath", "text", title: "Path to Alexa TTS cookie", description: "Path to Alexa TTS cookie - default /tmp", defaultValue: "/tmp", required: false, displayDuringSetup: true
+		input "automation", "text", title: "Automation Name", description: "Name of Automation to run", required: true, displayDuringSetup: true
 }
 metadata {
     definition (name: "Alexa Telnet TTS", namespace: "cw", author: "Chris Wilson") {
@@ -36,6 +36,7 @@ metadata {
         capability "Music Player"
         
         command "getDevices"
+        command "alexaRoutine"
       
         attribute "Telnet", ""
             }        
@@ -60,16 +61,12 @@ def initialize() {
 
 
 def getDevices(){
-    if (cookPath == null){
-        cookPath = "/tmp"
-        
-        }
-    // def msg = 'cat /opt/alexacookie/alexa.devicelist.json | jq \'.devices\''
-    //def msg = 'jq -r \'.devices[].accountName\' /opt/alexacookie/.alexa.devicelist.json > device.txt && nl device.txt > numbereddevice.txt &&cat numbereddevice.txt'
+    if (cookPath == null){cookPath = "/tmp"}
     def msg = "jq -r \'.devices[].accountName\' " + "${cookPath}" + "/.alexa.devicelist.json > device.txt && nl device.txt > numbereddevice.txt && cat numbereddevice.txt"
     // def msg = 'nl /opt/alexacookie/test.txt'
     sendMsg(msg)
 }
+
 def on(){
     //def msg = "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -q'
     //def msg = "cat /opt/alexacookie/volume.txt | jq -r"
@@ -81,10 +78,6 @@ def on(){
 def refresh(){
      //def msg =  "cat /opt/alexacookie/.alexa.devicelist.json"
     def msg = "${ttsPath}"+ "/alexa_remote_control.sh -d" + " \"${echoName}\"" + " -q >" + cookPath + "/deviceinfo.txt && sed -i 1d " + cookPath + "/deviceinfo.txt && sed -i '/null/d' " + cookPath + "/deviceinfo.txt && sed -i ':a;N;\$!ba;s/[\\n \\t]//g' " + cookPath +   "/deviceinfo.txt && cat " + cookPath + "/deviceinfo.txt"
-     
-  // sendEvent(name:'mute', value:'false')
-    //sendEvent(name:'mute', value:'false')
-    //state.lastLevel = level
     sendMsg(msg)
 
 }
@@ -100,16 +93,16 @@ def setLevel(level){
 def mute(){
     def msg =  "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -e vol:' + "0"
     state.lastLevel = device.currentValue('level')
-    sendEvent(name:'mute', value:'true')
+    
     sendEvent(name:'level', value:0)
     sendMsg(msg)
 }
 
 def unmute(){
-    if(device.currentValue('mute') == 'true'){
+    if(device.currentValue('level') == 0){
     def msg =  "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -e vol:' + "${state.lastLevel}"
     sendEvent(name:'level', value: state.lastLevel, unit: "%")
-    sendEvent(name:'mute', value:'false')
+    
     sendMsg(msg)
     }
 }
@@ -120,44 +113,49 @@ def play(){
     def msg =  "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -e play'
     runIn(1, refresh)
     sendMsg(msg)
-
 }
+
 def pause(){
     def msg =  "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -e pause'
     runIn(1, refresh)
     sendMsg(msg)
-   
-
 }
+
 def stop(){
     def msg =  "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -e pause'
     runIn(5, refresh)
     sendMsg(msg)
-
 }
+
 def playTrack(playlist){
     def msg =  "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -w' + " ${playlist}"
     runIn(5, refresh)
     sendMsg(msg)
-
 }
+
 def nextTrack(){
     def msg =  "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -e next'
     runIn(5, refresh)
     sendMsg(msg)
-
 }
+
 def previousTrack(){
     def msg =  "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -e prev'
     runIn(5, refresh)
     sendMsg(msg)
-
 }
+
 def speak(message) {
     //def msg = '/opt/ha-alexa-tts-master/alexa_remote_control.sh -d "' + "${echoName}" + '" -e speak:"' + "${message}" + '"\r\n'
     def msg =  "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -e speak:"' + "${message}\""
     sendEvent(name: "Telnet", value: "Connected")
     runIn(5, refresh)
+    sendMsg(msg)
+}
+def alexaRoutine() {
+    def msg =  "${ttsPath}" + '/alexa_remote_control.sh -d "' + "${echoName}" + '" -e automation:' + automation
+    sendEvent(name: "Telnet", value: "Connected")
+    runIn(10, refresh)
     sendMsg(msg)
 }
 
@@ -167,22 +165,15 @@ def sendMsg(String msg) {
     return new hubitat.device.HubAction(msg, hubitat.device.Protocol.TELNET)
 }
 
-
-
 def parse(String msg) {
-    
-
     log.debug "Telnet Response = ${msg}"
     if (msg == "permitted by applicable law.") {
         sendEvent(name: "Telnet", value: "Connected");
-        
-        
-    }
-    if (msg == "Sequence command: Alexa.Speak") {
-        sendEvent(name: "Telnet", value: "Connected");
-        
         }
     
+    if (msg == "Sequence command: Alexa.Speak") {
+        sendEvent(name: "Telnet", value: "Connected");
+         }
     
     if (msg.startsWith("     1")) {
         sendEvent(name: "Device_1", value: msg.substring(7))
@@ -269,36 +260,43 @@ def parse(String msg) {
     if (msg.startsWith("muted:")) {
         sendEvent(name: "mute", value: msg.substring(6))
         }
-    if (msg.startsWith("{\"playerInfo\"")) {
+   
+    if (msg.startsWith("{}{\"message\":\"Deviceisnotconnected")){
+                       log.debug "device offline"}
+    if (msg.startsWith("{\"playerInfo\":{\"infoText\"")) {
         def deviceRsp = msg
-       // log.debug "it started with volume 177"
-        
         def jsonSlurper = new JsonSlurper()
         def deviceInfo = jsonSlurper.parseText(deviceRsp)
-        //log.debug "line 267 ${deviceInfo.playerInfo.mainArt.url}"
+        //log.debug "line 260 ${deviceInfo.playerInfo}"
         sendEvent(name:'mute', value:deviceInfo.playerInfo.volume.muted)
         sendEvent(name:'level', value:deviceInfo.playerInfo.volume.volume)
         sendEvent(name:'status', value:deviceInfo.playerInfo.state)
         sendEvent(name:'artist', value:deviceInfo.playerInfo.infoText.subText1)
         sendEvent(name:'album', value:deviceInfo.playerInfo.infoText.subText2)
         sendEvent(name:'track', value:deviceInfo.playerInfo.infoText.title)
+          
         if (deviceInfo.playerInfo.mainArt.url){
        // sendEvent(name:'imageUrlHtml', value: "<img src=\"" + deviceInfo.playerInfo.mainArt.url +  "\" width=\"256\" height=\"256\"" + "></img>")
         sendEvent(name:'imageUrlHtml', value: "<img src=\"" + deviceInfo.playerInfo.mainArt.url + "\"></img>")
-       // sendEvent(name: "level", value: msg.substring(1))
+        }
+    }    
+    
+        if (msg.startsWith("{\"playerInfo\":{\"isPlayingInLemur\"")){
+            def deviceRsp = msg
+            def jsonSlurper = new JsonSlurper()
+            def deviceInfo = jsonSlurper.parseText(deviceRsp.substring(42))
+            sendEvent(name:'status', value:deviceInfo.currentState)
+            sendEvent(name:'mute', value:deviceInfo.muted)
+            sendEvent(name:'level', value:deviceInfo.volume)
         } 
-    }
+        
     if (msg.startsWith("{\"devices\"")){
         log.debug "caught the device refresh on line 260"
         def deviceList = msg
-        
         def jsonSlurper = new JsonSlurper()
-    
         def devices = jsonSlurper.parseText(deviceList)
-    log.debug "device list 266 ${devices.devices.accountName}"
-    def testList = devices.devices.accountName
-    log.debug testList[2]
-               
+        def testList = devices.devices.accountName
+        //log.debug testList[2]
     }  
 }
 
@@ -308,7 +306,7 @@ def telnetStatus(String status){
 		
 		log.error "Telnet connection dropped..."
         sendEvent(name: "Telnet", value: "Disconnected")
-		initialize()
+		runIn(60, initialize)
 	} else {
 		sendEvent(name: "Telnet", value: "Connected")
 	}
