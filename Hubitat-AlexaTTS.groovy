@@ -1,4 +1,4 @@
-import groovy.json.JsonSlurper
+
 /**
 *  Alexa Telnet TTS
 *
@@ -17,6 +17,7 @@ import groovy.json.JsonSlurper
 *  09/02/2018 - Initial Release - Chris Wilson
 */
 
+import groovy.json.JsonSlurper
 preferences {
 		input "ip", "text", title: "RPi IP Address", description: "Ip address of your pi", required: true, displayDuringSetup: true
 		input "port", "text", title: "RPi Telnet Port", description: "Port for your pi", required: true, displayDuringSetup: true
